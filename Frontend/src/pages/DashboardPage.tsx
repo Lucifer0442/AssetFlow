@@ -4,10 +4,11 @@ import {
 } from 'lucide-react'
 import { KPICard } from '@/components/shared/KPICard'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-import { mockKPI, mockAllocations, mockActivityLogs, mockNotifications } from '@/lib/mockData'
+import { apiService } from '@/lib/apiService'
 import { formatDate, formatDateTime, isOverdue } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 
 const notifIcons: Record<string, string> = {
   allocation: '📦', maintenance: '🔧', booking: '📅', transfer: '🔄', audit: '📋', system: '⚙️',
@@ -26,8 +27,29 @@ export function DashboardPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  const overdue = mockAllocations.filter(a => a.status === 'Overdue')
-  const upcoming = mockAllocations.filter(a => a.expectedReturn && !isOverdue(a.expectedReturn) && a.status === 'Active').slice(0, 5)
+  // Queries using TanStack Query for live data
+  const { data: kpi } = useQuery({
+    queryKey: ['dashboard-kpi'],
+    queryFn: apiService.getDashboardKPI,
+  })
+
+  const { data: allocations = [] } = useQuery({
+    queryKey: ['allocations'],
+    queryFn: () => apiService.getAllocations(),
+  })
+
+  const { data: activityLogs = [] } = useQuery({
+    queryKey: ['activity-logs'],
+    queryFn: apiService.getActivityLogs,
+  })
+
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: apiService.getNotifications,
+  })
+
+  const overdue = allocations.filter(a => a.status === 'Overdue')
+  const upcoming = allocations.filter(a => a.expectedReturn && !isOverdue(a.expectedReturn) && a.status === 'Active').slice(0, 5)
 
   const btnPrimary = { background: '#7A3B5E', color: 'white' }
   const btnSecondary = { border: '1px solid #E7E5EA', background: 'white', color: '#1A1621' }
@@ -43,18 +65,18 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs" style={{ color: '#9C97A3' }}>
-          <RefreshCw className="w-3.5 h-3.5" /> Last synced: Just now
+          <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Last synced: Live
         </div>
       </div>
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        <KPICard label="Assets Available" value={mockKPI.assetsAvailable} icon={Package} iconBg="#E5F7EC" iconColor="#0F9D58" trend={{ value: 2.4, label: 'vs last month' }} />
-        <KPICard label="Assets Allocated" value={mockKPI.assetsAllocated} icon={ArrowRightLeft} iconBg="#EAF1FE" iconColor="#2563EB" />
-        <KPICard label="Maintenance Today" value={mockKPI.maintenanceToday} icon={Wrench} iconBg="#FEF3E2" iconColor="#D97706" alert="3 critical · Needs attention" />
-        <KPICard label="Active Bookings" value={mockKPI.activeBookings} icon={CalendarDays} iconBg="#F0E8ED" iconColor="#7A3B5E" />
-        <KPICard label="Pending Transfers" value={mockKPI.pendingTransfers} icon={RefreshCw} iconBg="#FEF3E2" iconColor="#D97706" />
-        <KPICard label="Upcoming Returns" value={mockKPI.upcomingReturns} icon={Clock} iconBg="#F7F7F9" iconColor="#6B6470" />
+        <KPICard label="Assets Available" value={kpi?.assetsAvailable ?? 0} icon={Package} iconBg="#E5F7EC" iconColor="#0F9D58" trend={{ value: 2.4, label: 'vs last month' }} />
+        <KPICard label="Assets Allocated" value={kpi?.assetsAllocated ?? 0} icon={ArrowRightLeft} iconBg="#EAF1FE" iconColor="#2563EB" />
+        <KPICard label="Maintenance Today" value={kpi?.maintenanceToday ?? 0} icon={Wrench} iconBg="#FEF3E2" iconColor="#D97706" />
+        <KPICard label="Active Bookings" value={kpi?.activeBookings ?? 0} icon={CalendarDays} iconBg="#F0E8ED" iconColor="#7A3B5E" />
+        <KPICard label="Pending Transfers" value={kpi?.pendingTransfers ?? 0} icon={RefreshCw} iconBg="#FEF3E2" iconColor="#D97706" />
+        <KPICard label="Upcoming Returns" value={kpi?.upcomingReturns ?? 0} icon={Clock} iconBg="#F7F7F9" iconColor="#6B6470" />
       </div>
 
       {/* Quick Actions */}
@@ -130,8 +152,8 @@ export function DashboardPage() {
             <h3 className="font-semibold text-sm" style={{ color: '#1A1621' }}>Recent Activity</h3>
           </div>
           <div className="divide-y" style={{ borderColor: '#F7F7F9' }}>
-            {mockActivityLogs.slice(0, 6).map(log => {
-              const c = actionColors[log.action] ?? { bg: '#F7F7F9', text: '#6B6470' }
+            {activityLogs.slice(0, 6).map(log => {
+              const c = actionColors[log.action.toUpperCase()] ?? { bg: '#F7F7F9', text: '#6B6470' }
               return (
                 <div key={log.id} className="px-5 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors">
                   <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: '#F0E8ED' }}>
@@ -140,7 +162,7 @@ export function DashboardPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm" style={{ color: '#6B6470' }}>
                       <span className="font-semibold" style={{ color: '#1A1621' }}>{log.userName}</span>{' '}
-                      {log.details}
+                      {log.details || log.action}
                     </p>
                     <p className="text-xs mt-0.5" style={{ color: '#9C97A3' }}>{formatDateTime(log.timestamp)}</p>
                   </div>
@@ -157,7 +179,7 @@ export function DashboardPage() {
             <button onClick={() => navigate('/notifications')} className="text-xs font-semibold hover:underline" style={{ color: '#7A3B5E' }}>View all →</button>
           </div>
           <div className="divide-y" style={{ borderColor: '#F7F7F9' }}>
-            {mockNotifications.slice(0, 5).map(n => (
+            {notifications.slice(0, 5).map(n => (
               <div key={n.id} className="px-5 py-3.5 flex gap-3 hover:bg-slate-50 transition-colors" style={!n.read ? { background: 'rgba(122,59,94,0.02)' } : {}}>
                 <span className="text-lg flex-shrink-0">{notifIcons[n.type] ?? '🔔'}</span>
                 <div className="flex-1 min-w-0">
@@ -175,3 +197,4 @@ export function DashboardPage() {
     </div>
   )
 }
+export default DashboardPage;

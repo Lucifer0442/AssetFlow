@@ -1,13 +1,8 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import type { User, Role } from '@/types'
-
-// Demo users for role-based testing without a backend
-const DEMO_USERS: Record<string, User & { password: string }> = {
-  'admin@assetflow.in': { id: 'u1', name: 'Aryan Sharma', email: 'admin@assetflow.in', role: 'Admin', department: 'Engineering', password: 'demo123' },
-  'manager@assetflow.in': { id: 'u2', name: 'Priya Mehta', email: 'manager@assetflow.in', role: 'AssetManager', department: 'Design', password: 'demo123' },
-  'depthead@assetflow.in': { id: 'u3', name: 'Vikram Nair', email: 'depthead@assetflow.in', role: 'DeptHead', department: 'Operations', password: 'demo123' },
-  'employee@assetflow.in': { id: 'u4', name: 'Sunita Rao', email: 'employee@assetflow.in', role: 'Employee', department: 'Finance', password: 'demo123' },
-}
+import { apiClient } from '@/lib/apiClient'
+import { toFrontendRole } from '@/lib/apiService'
+import { connectSocket, disconnectSocket } from '@/lib/socketClient'
 
 interface AuthContextType {
   user: User | null
@@ -24,36 +19,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  const handleLogout = () => {
+    setUser(null)
+    localStorage.removeItem('assetflow_access_token')
+    localStorage.removeItem('assetflow_refresh_token')
+    localStorage.removeItem('assetflow_user')
+    disconnectSocket()
+  }
+
   useEffect(() => {
     const stored = localStorage.getItem('assetflow_user')
     if (stored) {
-      try { setUser(JSON.parse(stored)) } catch { /* noop */ }
+      try {
+        setUser(JSON.parse(stored))
+        connectSocket()
+      } catch {
+        handleLogout()
+      }
     }
     setIsLoading(false)
+
+    // Listen to global auto-logout events from Axios interceptors
+    const onAuthLogout = () => handleLogout()
+    window.addEventListener('auth_logout', onAuthLogout)
+    return () => window.removeEventListener('auth_logout', onAuthLogout)
   }, [])
 
   const login = async (email: string, password: string) => {
-    await new Promise(r => setTimeout(r, 800)) // Simulate API delay
-    const found = DEMO_USERS[email.toLowerCase()]
-    if (!found || found.password !== password) {
-      throw new Error('Invalid email or password')
+    const res = await apiClient.post('/auth/login', { email, password })
+    const { user: backendUser, accessToken, refreshToken } = res.data.data
+
+    localStorage.setItem('assetflow_access_token', accessToken)
+    localStorage.setItem('assetflow_refresh_token', refreshToken)
+
+    // Map backend roles (lowercase) to frontend Role (cased)
+    const backendRole = backendUser.roles?.[0] || 'employee'
+    const mappedRole = toFrontendRole(backendRole)
+
+    const mappedUser: User = {
+      id: backendUser.id,
+      name: `${backendUser.firstName} ${backendUser.lastName}`.trim() || backendUser.email,
+      email: backendUser.email,
+      role: mappedRole,
+      department: undefined, // derived dynamically or updated on profile load
+      avatarUrl: undefined,
     }
-    const { password: _, ...u } = found
-    setUser(u)
-    localStorage.setItem('assetflow_user', JSON.stringify(u))
+
+    setUser(mappedUser)
+    localStorage.setItem('assetflow_user', JSON.stringify(mappedUser))
+    connectSocket()
   }
 
-  const signup = async (name: string, email: string, _password: string) => {
-    await new Promise(r => setTimeout(r, 800))
-    // In real app, call POST /api/auth/signup
-    const newUser: User = { id: crypto.randomUUID(), name, email, role: 'Employee' }
-    setUser(newUser)
-    localStorage.setItem('assetflow_user', JSON.stringify(newUser))
+  const signup = async (name: string, email: string, password: string) => {
+    // Split name into first and last name
+    const parts = name.trim().split(' ')
+    const firstName = parts[0] || 'Employee'
+    const lastName = parts.slice(1).join(' ') || 'User'
+    const employeeCode = `EMP-${Math.floor(1000 + Math.random() * 9000)}`
+
+    // Hit backend registration
+    await apiClient.post('/auth/register', {
+      email,
+      password,
+      firstName,
+      lastName,
+      employeeCode,
+    })
+
+    // Perform auto login
+    await login(email, password)
   }
 
   const logout = () => {
-    setUser(null)
-    localStorage.removeItem('assetflow_user')
+    const rToken = localStorage.getItem('assetflow_refresh_token')
+    if (rToken) {
+      apiClient.post('/auth/logout', { refreshToken: rToken }).catch(() => { /* noop */ })
+    }
+    handleLogout()
   }
 
   const hasRole = (...roles: Role[]) => !!user && roles.includes(user.role)

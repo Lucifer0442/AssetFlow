@@ -4,8 +4,9 @@ import {
   LineChart, Line, BarChart, Bar, PieChart as RechartsPie, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import { mockDepartments, mockCategories } from '@/lib/mockData'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { apiService } from '@/lib/apiService'
+import { useQuery } from '@tanstack/react-query'
 
 const utilizationData = [
   { month: 'Jan', utilization: 72 }, { month: 'Feb', utilization: 78 },
@@ -14,16 +15,13 @@ const utilizationData = [
   { month: 'Jul', utilization: 83 },
 ]
 const maintenanceFreq = [
-  { name: 'Laptops', requests: 28 }, { name: 'Monitors', requests: 12 },
-  { name: 'Vehicles', requests: 18 }, { name: 'Furniture', requests: 8 },
-  { name: 'Mobile', requests: 35 }, { name: 'Conf. Room', requests: 9 },
+  { name: 'Laptops', requests: 2 }, { name: 'Monitors', requests: 1 },
+  { name: 'Furniture', requests: 3 }, { name: 'Vehicles', requests: 1 },
 ]
 const idleVsUsed = [
-  { name: 'Laptops', used: 980, idle: 260 }, { name: 'Monitors', used: 720, idle: 260 },
-  { name: 'Furniture', used: 2800, idle: 400 }, { name: 'Vehicles', used: 30, idle: 12 },
-  { name: 'Mobile', used: 430, idle: 133 },
+  { name: 'Laptops', used: 12, idle: 4 }, { name: 'Monitors', used: 8, idle: 2 },
+  { name: 'Furniture', used: 15, idle: 5 }, { name: 'Vehicles', used: 3, idle: 1 },
 ]
-const deptAllocation = mockDepartments.slice(0, 5).map(d => ({ name: d.name, value: d.employeeCount }))
 const PIE_COLORS = ['#7A3B5E', '#0F8B7F', '#0F9D58', '#2563EB', '#D97706']
 
 function Widget({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
@@ -36,7 +34,7 @@ function Widget({ title, icon: Icon, children }: { title: string; icon: React.El
           </div>
           <h3 className="font-semibold text-sm" style={{ color: '#1A1621' }}>{title}</h3>
         </div>
-        <button className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-xl border transition-all hover:bg-slate-50" style={{ borderColor: '#E7E5EA', color: '#6B6470' }}>
+        <button className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-xl border transition-all hover:bg-slate-50 cursor-pointer" style={{ borderColor: '#E7E5EA', color: '#6B6470' }}>
           <Download className="w-3.5 h-3.5" /> Export
         </button>
       </div>
@@ -51,6 +49,18 @@ export function ReportsPage() {
   const [dept, setDept] = useState('')
   const [category, setCategory] = useState('')
 
+  // Queries using TanStack Query
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: apiService.getDepartments,
+  })
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: apiService.getCategories,
+  })
+
+  const deptAllocation = departments.slice(0, 5).map(d => ({ name: d.name, value: d.employeeCount || 1 }))
   const selectStyle = { borderColor: '#E7E5EA', color: '#6B6470', background: 'white' }
 
   return (
@@ -60,7 +70,7 @@ export function ReportsPage() {
           <h1 className="text-[28px] font-bold" style={{ color: '#1A1621' }}>Reports & Analytics</h1>
           <p className="text-sm mt-0.5" style={{ color: '#6B6470' }}>Organization-wide asset insights</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold hover:brightness-90" style={{ background: '#7A3B5E' }}>
+        <button className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold hover:brightness-90 cursor-pointer" style={{ background: '#7A3B5E' }}>
           <Download className="w-4 h-4" /> Export All
         </button>
       </div>
@@ -74,14 +84,18 @@ export function ReportsPage() {
                 className="px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: '#E7E5EA' }} /></div>
           ))}
           <div><label className="block text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#6B6470', letterSpacing: '0.06em' }}>Department</label>
-            <select value={dept} onChange={e => setDept(e.target.value)} className="px-3 py-2 rounded-xl border text-sm outline-none" style={selectStyle}>
+            <select value={dept} onChange={e => setDept(e.target.value)} className="px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={selectStyle}>
               <option value="">All Departments</option>
-              {mockDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </div>
           <div><label className="block text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#6B6470', letterSpacing: '0.06em' }}>Category</label>
-            <select value={category} onChange={e => setCategory(e.target.value)} className="px-3 py-2 rounded-xl border text-sm outline-none" style={selectStyle}>
+            <select value={category} onChange={e => setCategory(e.target.value)} className="px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={selectStyle}>
               <option value="">All Categories</option>
-              {mockCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-          <button className="px-4 py-2 text-sm font-semibold text-white rounded-xl hover:brightness-90" style={{ background: '#7A3B5E' }}>Apply</button>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <button className="px-4 py-2 text-sm font-semibold text-white rounded-xl hover:brightness-90 cursor-pointer" style={{ background: '#7A3B5E' }}>Apply</button>
         </div>
       </div>
 
@@ -151,16 +165,18 @@ export function ReportsPage() {
       <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid #E7E5EA' }}>
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #E7E5EA' }}>
           <h3 className="font-semibold text-sm" style={{ color: '#1A1621' }}>Assets Due for Maintenance</h3>
-          <button className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-xl border hover:bg-slate-50" style={{ borderColor: '#E7E5EA', color: '#6B6470' }}>
+          <button className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-xl border hover:bg-slate-50 cursor-pointer" style={{ borderColor: '#E7E5EA', color: '#6B6470' }}>
             <Download className="w-3.5 h-3.5" /> Export
           </button>
         </div>
         <table className="w-full text-sm">
-          <thead><tr style={{ background: '#F7F7F9', borderBottom: '1px solid #E7E5EA' }}>
-            {['Asset', 'Tag', 'Category', 'Last Maintenance', 'Next Due', 'Status'].map(h => (
-              <th key={h} className="px-4 py-3 text-left" style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6470' }}>{h}</th>
-            ))}
-          </tr></thead>
+          <thead>
+            <tr style={{ background: '#F7F7F9', borderBottom: '1px solid #E7E5EA' }}>
+              {['Asset', 'Tag', 'Category', 'Last Maintenance', 'Next Due', 'Status'].map(h => (
+                <th key={h} className="px-4 py-3 text-left" style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6470' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
           <tbody className="divide-y" style={{ borderColor: '#F7F7F9' }}>
             {[
               { name: 'MacBook Pro 14"', tag: 'AF-0001', cat: 'Laptops', last: 'Jan 2024', next: 'Jul 2024', status: 'Overdue' },
@@ -182,3 +198,4 @@ export function ReportsPage() {
     </div>
   )
 }
+export default ReportsPage;

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Bell, Activity, Check } from 'lucide-react'
-import { mockNotifications, mockActivityLogs } from '@/lib/mockData'
+import { apiService } from '@/lib/apiService'
 import { formatDateTime } from '@/lib/utils'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
 const notifIcons: Record<string, string> = {
   allocation: '📦', maintenance: '🔧', booking: '📅', transfer: '🔄', audit: '📋', system: '⚙️',
@@ -16,13 +18,53 @@ const actionColors: Record<string, { bg: string; text: string }> = {
 }
 
 export function NotificationsPage() {
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState<'notifications' | 'activity'>('notifications')
-  const [notifications, setNotifications] = useState(mockNotifications)
   const [filter, setFilter] = useState('')
 
-  const markAllRead = () => setNotifications(ns => ns.map(n => ({ ...n, read: true })))
+  // Queries using TanStack Query
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: apiService.getNotifications,
+  })
+
+  const { data: activityLogs = [] } = useQuery({
+    queryKey: ['activity-logs'],
+    queryFn: apiService.getActivityLogs,
+  })
+
+  // Mutations
+  const markReadMutation = useMutation({
+    mutationFn: apiService.markNotificationRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    }
+  })
+
+  const markAllReadMutation = useMutation({
+    mutationFn: apiService.markAllNotificationsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      toast.success('All notifications marked as read')
+    },
+    onError: () => {
+      toast.error('Failed to mark notifications as read')
+    }
+  })
+
+  const markAllRead = () => {
+    markAllReadMutation.mutate()
+  }
+
+  const handleNotifClick = (id: string) => {
+    const notif = notifications.find(n => n.id === id)
+    if (notif && !notif.read) {
+      markReadMutation.mutate(id)
+    }
+  }
+
   const unreadCount = notifications.filter(n => !n.read).length
-  const filteredLogs = mockActivityLogs.filter(l => !filter || l.action.toLowerCase().includes(filter.toLowerCase()) || l.userName.toLowerCase().includes(filter.toLowerCase()))
+  const filteredLogs = activityLogs.filter(l => !filter || l.action.toLowerCase().includes(filter.toLowerCase()) || l.userName.toLowerCase().includes(filter.toLowerCase()))
 
   const tabStyle = (active: boolean) => active
     ? { background: '#7A3B5E', color: 'white', borderRadius: '10px' }
@@ -36,11 +78,11 @@ export function NotificationsPage() {
       </div>
 
       <div className="flex gap-1 p-1 rounded-2xl w-fit" style={{ background: '#F7F7F9', border: '1px solid #E7E5EA' }}>
-        <button onClick={() => setTab('notifications')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all" style={tabStyle(tab === 'notifications')}>
+        <button onClick={() => setTab('notifications')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer" style={tabStyle(tab === 'notifications')}>
           <Bell className="w-4 h-4" /> Notifications
           {unreadCount > 0 && <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#C0392B', color: 'white' }}>{unreadCount}</span>}
         </button>
-        <button onClick={() => setTab('activity')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all" style={tabStyle(tab === 'activity')}>
+        <button onClick={() => setTab('activity')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer" style={tabStyle(tab === 'activity')}>
           <Activity className="w-4 h-4" /> Activity Log
         </button>
       </div>
@@ -50,14 +92,14 @@ export function NotificationsPage() {
           <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #E7E5EA' }}>
             <h3 className="font-semibold text-sm" style={{ color: '#1A1621' }}>All Notifications</h3>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#7A3B5E' }}>
+              <button onClick={markAllRead} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer" style={{ color: '#7A3B5E' }}>
                 <Check className="w-3.5 h-3.5" /> Mark all read
               </button>
             )}
           </div>
           <div className="divide-y" style={{ borderColor: '#F7F7F9' }}>
             {notifications.map(n => (
-              <div key={n.id} onClick={() => setNotifications(ns => ns.map(x => x.id === n.id ? { ...x, read: true } : x))}
+              <div key={n.id} onClick={() => handleNotifClick(n.id)}
                 className="px-5 py-4 flex gap-4 cursor-pointer hover:bg-slate-50 transition-colors relative"
                 style={!n.read ? { background: 'rgba(122,59,94,0.02)' } : {}}
               >
@@ -72,6 +114,11 @@ export function NotificationsPage() {
                 </div>
               </div>
             ))}
+            {notifications.length === 0 && (
+              <div className="py-12 text-center text-sm" style={{ color: '#9C97A3' }}>
+                No notifications to display
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -81,19 +128,21 @@ export function NotificationsPage() {
           <div className="px-5 py-4 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid #E7E5EA' }}>
             <h3 className="font-semibold text-sm" style={{ color: '#1A1621' }}>Activity Log</h3>
             <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter by user or action…"
-              className="px-3 py-1.5 rounded-xl border text-xs outline-none w-52" style={{ borderColor: '#E7E5EA', color: '#1A1621' }}
+              className="px-3 py-1.5 rounded-xl border text-xs outline-none w-52 bg-white" style={{ borderColor: '#E7E5EA', color: '#1A1621' }}
               onFocus={e => e.target.style.borderColor = '#7A3B5E'} onBlur={e => e.target.style.borderColor = '#E7E5EA'} />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead><tr style={{ background: '#F7F7F9', borderBottom: '1px solid #E7E5EA' }}>
-                {['Timestamp', 'User', 'Action', 'Entity', 'Details'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left" style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9C97A3' }}>{h}</th>
-                ))}
-              </tr></thead>
+              <thead>
+                <tr style={{ background: '#F7F7F9', borderBottom: '1px solid #E7E5EA' }}>
+                  {['Timestamp', 'User', 'Action', 'Entity', 'Details'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left" style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9C97A3' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
               <tbody className="divide-y" style={{ borderColor: '#F7F7F9' }}>
                 {filteredLogs.map(log => {
-                  const c = actionColors[log.action] ?? { bg: '#F7F7F9', text: '#6B6470' }
+                  const c = actionColors[log.action.toUpperCase()] ?? { bg: '#F7F7F9', text: '#6B6470' }
                   return (
                     <tr key={log.id} className="hover:bg-slate-50 transition-colors" style={{ height: '52px' }}>
                       <td className="px-4 py-3 font-mono whitespace-nowrap" style={{ color: '#9C97A3', fontSize: '11px' }}>{formatDateTime(log.timestamp)}</td>
@@ -109,10 +158,17 @@ export function NotificationsPage() {
                       <td className="px-4 py-3" style={{ color: '#6B6470', fontSize: '12px' }}>
                         <span className="font-semibold" style={{ color: '#1A1621' }}>{log.entity}</span> <span style={{ color: '#9C97A3' }}>#{log.entityId}</span>
                       </td>
-                      <td className="px-4 py-3 max-w-xs truncate" style={{ color: '#6B6470', fontSize: '12px' }}>{log.details}</td>
+                      <td className="px-4 py-3 max-w-xs truncate" style={{ color: '#6B6470', fontSize: '12px' }}>{log.details || 'No additional detail'}</td>
                     </tr>
                   )
                 })}
+                {filteredLogs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-center py-6 text-xs" style={{ color: '#9C97A3' }}>
+                      No logs matching filters found
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -121,3 +177,4 @@ export function NotificationsPage() {
     </div>
   )
 }
+export default NotificationsPage;

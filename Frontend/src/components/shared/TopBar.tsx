@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Search, Bell, LogOut, User, Settings, ChevronDown, HelpCircle, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { mockNotifications } from '@/lib/mockData'
+import { apiService } from '@/lib/apiService'
 import { formatDateTime } from '@/lib/utils'
 import { StatusBadge } from './StatusBadge'
+import { useQuery } from '@tanstack/react-query'
 
 const notifIcons: Record<string, string> = {
   allocation: '📦', maintenance: '🔧', booking: '📅', transfer: '🔄', audit: '📋', system: '⚙️',
@@ -17,7 +18,14 @@ export function TopBar() {
   const [showUser, setShowUser] = useState(false)
   const [search, setSearch] = useState('')
 
-  const unread = mockNotifications.filter(n => !n.read)
+  // Query live notifications using TanStack Query
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: apiService.getNotifications,
+    enabled: !!user,
+  })
+
+  const unread = notifications.filter(n => !n.read)
 
   return (
     <header className="h-[60px] bg-white border-b flex items-center gap-4 px-6 sticky top-0 z-30" style={{ borderColor: '#E7E5EA' }}>
@@ -28,8 +36,8 @@ export function TopBar() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search assets, users, bookings…"
-          className="w-full pl-9 pr-4 py-2 rounded-full border text-sm outline-none transition-all"
-          style={{ borderColor: '#E7E5EA', background: '#F7F7F9', color: '#1A1621', fontSize: '13px' }}
+          className="w-full pl-9 pr-4 py-2 rounded-full border text-sm outline-none transition-all bg-[#F7F7F9]"
+          style={{ borderColor: '#E7E5EA', color: '#1A1621', fontSize: '13px' }}
           onFocus={e => { e.target.style.borderColor = '#7A3B5E'; e.target.style.background = '#fff' }}
           onBlur={e => { e.target.style.borderColor = '#E7E5EA'; e.target.style.background = '#F7F7F9' }}
         />
@@ -39,7 +47,7 @@ export function TopBar() {
         {/* Audit Logs button */}
         <button
           onClick={() => navigate('/notifications')}
-          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all hover:bg-slate-50"
+          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all hover:bg-slate-50 cursor-pointer"
           style={{ borderColor: '#E7E5EA', color: '#6B6470' }}
         >
           Activity Logs
@@ -52,7 +60,7 @@ export function TopBar() {
         <div className="relative">
           <button
             onClick={() => { setShowNotifs(s => !s); setShowUser(false) }}
-            className="relative p-2 rounded-lg transition-colors hover:bg-slate-50"
+            className="relative p-2 rounded-lg transition-colors hover:bg-slate-50 cursor-pointer"
             style={{ color: '#6B6470' }}
           >
             <Bell className="w-[18px] h-[18px]" />
@@ -72,23 +80,28 @@ export function TopBar() {
                 )}
               </div>
               <div className="max-h-72 overflow-y-auto divide-y" style={{ borderColor: '#F7F7F9' }}>
-                {mockNotifications.slice(0, 5).map(n => (
+                {notifications.slice(0, 5).map(n => (
                   <div key={n.id} className={`px-4 py-3 flex gap-3 hover:bg-slate-50 transition-colors`} style={!n.read ? { background: 'rgba(122,59,94,0.03)' } : {}}>
                     <span className="text-lg flex-shrink-0">{notifIcons[n.type] ?? '🔔'}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs font-semibold" style={{ color: !n.read ? '#1A1621' : '#6B6470' }}>{n.title}</p>
-                        {!n.read && <span className="w-2 h-2 rounded-full flex-shrink-0 mt-0.5 flex-shrink-0" style={{ background: '#7A3B5E' }} />}
+                        {!n.read && <span className="w-2 h-2 rounded-full flex-shrink-0 mt-0.5" style={{ background: '#7A3B5E' }} />}
                       </div>
                       <p className="text-xs mt-0.5 line-clamp-2" style={{ color: '#9C97A3' }}>{n.message}</p>
                       <p className="text-[10px] mt-1" style={{ color: '#9C97A3' }}>{formatDateTime(n.createdAt)}</p>
                     </div>
                   </div>
                 ))}
+                {notifications.length === 0 && (
+                  <div className="py-6 text-center text-xs text-slate-400">
+                    No new notifications
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => { navigate('/notifications'); setShowNotifs(false) }}
-                className="w-full py-3 text-center text-xs font-semibold transition-colors hover:bg-slate-50"
+                className="w-full py-3 text-center text-xs font-semibold transition-colors hover:bg-slate-50 cursor-pointer"
                 style={{ borderTop: '1px solid #E7E5EA', color: '#7A3B5E' }}
               >
                 View all notifications →
@@ -98,7 +111,7 @@ export function TopBar() {
         </div>
 
         {/* Help */}
-        <button className="p-2 rounded-lg transition-colors hover:bg-slate-50" style={{ color: '#6B6470' }}>
+        <button className="p-2 rounded-lg transition-colors hover:bg-slate-50 cursor-pointer" style={{ color: '#6B6470' }}>
           <HelpCircle className="w-[18px] h-[18px]" />
         </button>
 
@@ -109,7 +122,7 @@ export function TopBar() {
         <div className="relative">
           <button
             onClick={() => { setShowUser(s => !s); setShowNotifs(false) }}
-            className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ background: 'linear-gradient(135deg, #7A3B5E, #3D1F35)' }}>
               {user?.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -128,7 +141,7 @@ export function TopBar() {
                 {[
                   { icon: User, label: 'Profile', color: '#1A1621' },
                   { icon: Settings, label: 'Settings', color: '#1A1621' },
-                  { icon: RefreshCw, label: 'Last synced: Just now', color: '#9C97A3' },
+                  { icon: RefreshCw, label: 'Last synced: Live', color: '#9C97A3' },
                 ].map(item => (
                   <button key={item.label} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm hover:bg-slate-50 transition-colors" style={{ color: item.color }}>
                     <item.icon className="w-4 h-4" /> {item.label}
@@ -136,7 +149,7 @@ export function TopBar() {
                 ))}
                 <button
                   onClick={() => { logout(); navigate('/login') }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm hover:bg-red-50 transition-colors mt-1"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm hover:bg-red-50 transition-colors mt-1 cursor-pointer"
                   style={{ color: '#C0392B', borderTop: '1px solid #E7E5EA' }}
                 >
                   <LogOut className="w-4 h-4" /> Logout
@@ -154,3 +167,4 @@ export function TopBar() {
     </header>
   )
 }
+export default TopBar;

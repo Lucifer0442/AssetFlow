@@ -13,12 +13,6 @@ const schema = z.object({
 })
 type FormData = z.infer<typeof schema>
 
-const DEMO_CREDS = [
-  { role: 'Admin', email: 'admin@assetflow.in', desc: 'Full access' },
-  { role: 'Asset Manager', email: 'manager@assetflow.in', desc: 'Asset ops' },
-  { role: 'Dept Head', email: 'depthead@assetflow.in', desc: 'Dept-scoped' },
-  { role: 'Employee', email: 'employee@assetflow.in', desc: 'Limited view' },
-]
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -27,7 +21,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login')
 
-  const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({ resolver: zodResolver(schema) })
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({ resolver: zodResolver(schema) })
 
   const onSubmit = async (data: FormData) => {
     setLoading(true)
@@ -79,13 +73,12 @@ export function LoginPage() {
 
             <div className="mt-10 space-y-3">
               {[
-                { icon: '📦', title: 'Asset Lifecycle Tracking', desc: 'From procurement to disposal' },
-                { icon: '🔄', title: 'Smart Allocations', desc: 'Conflict-free with transfer flows' },
-                { icon: '📅', title: 'Resource Booking', desc: 'Calendar with overlap protection' },
-                { icon: '📋', title: 'Audit Cycles', desc: 'Discrepancy reports, one click' },
+                { title: 'Asset Lifecycle Tracking', desc: 'From procurement to disposal' },
+                { title: 'Smart Allocations', desc: 'Conflict-free with transfer flows' },
+                { title: 'Resource Booking', desc: 'Calendar with overlap protection' },
+                { title: 'Audit Cycles', desc: 'Discrepancy reports, one click' },
               ].map(f => (
                 <div key={f.title} className="flex items-start gap-3">
-                  <span className="text-xl flex-shrink-0 mt-0.5">{f.icon}</span>
                   <div>
                     <p className="text-sm font-semibold text-white">{f.title}</p>
                     <p className="text-xs" style={{ color: '#9C7A8A' }}>{f.desc}</p>
@@ -130,25 +123,6 @@ export function LoginPage() {
           <h2 className="text-[28px] font-bold" style={{ color: '#1A1621' }}>Welcome back</h2>
           <p className="mt-1 text-sm" style={{ color: '#6B6470' }}>Sign in to your AssetFlow account</p>
 
-          {/* Demo credentials */}
-          <div className="mt-5 p-4 rounded-xl" style={{ background: '#F0E8ED', border: '1px solid #D8B8CA' }}>
-            <p className="text-[11px] font-bold uppercase tracking-wide mb-2.5" style={{ color: '#7A3B5E' }}>Demo Credentials — click to autofill</p>
-            <div className="grid grid-cols-2 gap-2">
-              {DEMO_CREDS.map(c => (
-                <button
-                  key={c.role}
-                  type="button"
-                  onClick={() => { setValue('email', c.email); setValue('password', 'demo123') }}
-                  className="text-left px-3 py-2 rounded-lg border bg-white transition-all hover:border-opacity-80 text-xs"
-                  style={{ borderColor: '#D8B8CA' }}
-                >
-                  <span className="block font-semibold" style={{ color: '#7A3B5E' }}>{c.role}</span>
-                  <span className="text-[10px]" style={{ color: '#9C97A3' }}>{c.desc}</span>
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-[10px]" style={{ color: '#9C7A8A' }}>Password: <code className="font-mono px-1 rounded" style={{ background: '#D8B8CA' }}>demo123</code></p>
-          </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
             <div>

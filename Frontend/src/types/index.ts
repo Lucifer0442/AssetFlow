@@ -1,6 +1,6 @@
 // Core domain types mirroring backend models
 
-export type Role = 'Admin' | 'AssetManager' | 'DeptHead' | 'Employee'
+export type Role = 'Admin' | 'AssetManager' | 'DeptHead' | 'Employee' | 'Auditor' | 'Technician'
 
 export type AssetStatus =
   | 'Available'
