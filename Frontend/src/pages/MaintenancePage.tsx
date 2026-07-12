@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Plus, Upload, GripVertical } from 'lucide-react'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel'
 import { Modal } from '@/components/shared/Modal'
-import { mockMaintenance, mockAssets, mockUsers } from '@/lib/mockData'
+import { apiService } from '@/lib/apiService'
 import type { MaintenanceRequest, MaintenanceStatus } from '@/types'
 import { formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const COLUMNS: { status: MaintenanceStatus; label: string; dotColor: string; headerStyle: React.CSSProperties }[] = [
   { status: 'Pending',    label: 'Pending',           dotColor: '#D97706', headerStyle: { background: '#FEF3E2', borderColor: '#FCD9A0' } },
@@ -21,22 +22,136 @@ const PRIORITY_DOT: Record<string, string> = {
 }
 
 export function MaintenancePage() {
-  const [requests, setRequests] = useState(mockMaintenance)
+  const queryClient = useQueryClient()
   const [selected, setSelected] = useState<MaintenanceRequest | null>(null)
   const [showRaise, setShowRaise] = useState(false)
 
+  // Raise Request states
+  const [selectedAssetId, setSelectedAssetId] = useState('')
+  const [priority, setPriority] = useState('Medium')
+  const [description, setDescription] = useState('')
+
+  // Action states
+  const [selectedTechId, setSelectedTechId] = useState('')
+  const [resolutionNotes, setResolutionNotes] = useState('')
+
+  // Queries
+  const { data: requests = [] } = useQuery({
+    queryKey: ['maintenance'],
+    queryFn: apiService.getMaintenanceRequests,
+  })
+
+  const { data: assets = [] } = useQuery({
+    queryKey: ['assets'],
+    queryFn: () => apiService.getAssets(),
+  })
+
+  const { data: rawEmployees = [] } = useQuery({
+    queryKey: ['raw-employees'],
+    queryFn: apiService.getEmployees,
+  })
+
+  // Set default asset
+  useMemo(() => {
+    if (assets.length > 0 && !selectedAssetId) {
+      setSelectedAssetId(assets[0].id)
+    }
+  }, [assets, selectedAssetId])
+
+  // Set default tech
+  useMemo(() => {
+    if (rawEmployees.length > 0 && !selectedTechId) {
+      setSelectedTechId(rawEmployees[0].id)
+    }
+  }, [rawEmployees, selectedTechId])
+
   const byStatus = (status: MaintenanceStatus) => requests.filter(r => r.status === status)
 
-  const handleApprove = (id: string) => {
-    setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'Approved' as MaintenanceStatus } : r))
-    toast.success('Request approved')
-    setSelected(null)
-  }
+  // Mutations
+  const raiseMutation = useMutation({
+    mutationFn: apiService.raiseMaintenance,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenance'] })
+      toast.success('Maintenance request raised successfully!')
+      setShowRaise(false)
+      setDescription('')
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to raise request')
+    }
+  })
 
-  const handleReject = (id: string) => {
-    setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'Rejected' as MaintenanceStatus } : r))
-    toast.error('Request rejected')
-    setSelected(null)
+  const approveMutation = useMutation({
+    mutationFn: ({ id, action, comments }: { id: string; action: 'approved' | 'rejected'; comments?: string }) =>
+      apiService.approveMaintenance(id, action, comments),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenance'] })
+      toast.success('Ticket response recorded!')
+      setSelected(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to verify request')
+    }
+  })
+
+  const assignMutation = useMutation({
+    mutationFn: ({ id, technicianId }: { id: string; technicianId: string }) =>
+      apiService.assignMaintenance(id, technicianId, 'Assigned technician for repairs'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenance'] })
+      toast.success('Technician assigned successfully!')
+      setSelected(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to assign technician')
+    }
+  })
+
+  const startMutation = useMutation({
+    mutationFn: apiService.startMaintenance,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenance'] })
+      toast.success('Maintenance work started!')
+      setSelected(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to start maintenance')
+    }
+  })
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes: string }) =>
+      apiService.resolveMaintenance(id, notes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenance'] })
+      toast.success('Maintenance resolved!')
+      setSelected(null)
+      setResolutionNotes('')
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to resolve maintenance')
+    }
+  })
+
+  const closeMutation = useMutation({
+    mutationFn: apiService.closeMaintenance,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenance'] })
+      toast.success('Maintenance ticket closed and logged!')
+      setSelected(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to close maintenance')
+    }
+  })
+
+  const handleRaiseSubmit = () => {
+    if (!description) return toast.error('Please describe the issue')
+    raiseMutation.mutate({
+      assetId: selectedAssetId,
+      priority,
+      description,
+    })
   }
 
   return (
@@ -47,7 +162,7 @@ export function MaintenancePage() {
             <h1 className="text-[28px] font-bold" style={{ color: '#1A1621' }}>Maintenance Management</h1>
             <p className="text-sm mt-0.5" style={{ color: '#6B6470' }}>Track and resolve maintenance requests</p>
           </div>
-          <button onClick={() => setShowRaise(true)} className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold hover:brightness-90" style={{ background: '#7A3B5E' }}>
+          <button onClick={() => setShowRaise(true)} className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold hover:brightness-90 cursor-pointer" style={{ background: '#7A3B5E' }}>
             <Plus className="w-4 h-4" /> Raise Request
           </button>
         </div>
@@ -82,7 +197,7 @@ export function MaintenancePage() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 mb-1">
-                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PRIORITY_DOT[req.priority] }} />
+                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PRIORITY_DOT[req.priority] || '#9C97A3' }} />
                             <StatusBadge status={req.priority} />
                           </div>
                           <p className="text-sm font-semibold truncate" style={{ color: '#1A1621' }}>{req.assetName}</p>
@@ -113,14 +228,6 @@ export function MaintenancePage() {
                 </div>
               </div>
             ))}
-            {/* Rejected — collapsed */}
-            <div className="w-10 flex-shrink-0">
-              <div className="h-full rounded-2xl border flex flex-col items-center py-4 gap-2" style={{ background: '#F7F7F9', borderColor: '#E7E5EA' }}>
-                <span className="text-[10px] font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: '#9C97A3' }}>
-                  Rejected ({requests.filter(r => r.status === 'Rejected').length})
-                </span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -130,8 +237,10 @@ export function MaintenancePage() {
         {selected && (
           <div className="p-6 space-y-5">
             <div className="flex gap-2"><StatusBadge status={selected.status} /><StatusBadge status={selected.priority} /></div>
-            <div><p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: '#9C97A3', letterSpacing: '0.06em' }}>Description</p>
-              <p className="text-sm p-3.5 rounded-xl" style={{ background: '#F7F7F9', color: '#6B6470', border: '1px solid #E7E5EA' }}>{selected.description}</p></div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: '#9C97A3', letterSpacing: '0.06em' }}>Description</p>
+              <p className="text-sm p-3.5 rounded-xl" style={{ background: '#F7F7F9', color: '#6B6470', border: '1px solid #E7E5EA' }}>{selected.description}</p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {[['Raised by', selected.requestedByName], ['Date', formatDate(selected.createdAt)], ['Priority', selected.priority], ['Technician', selected.technicianName ?? '—']].map(([k, v]) => (
                 <div key={String(k)} className="rounded-xl p-3" style={{ background: '#F7F7F9', border: '1px solid #E7E5EA' }}>
@@ -140,17 +249,51 @@ export function MaintenancePage() {
                 </div>
               ))}
             </div>
+
             {selected.status === 'Pending' && (
               <div className="flex gap-2">
-                <button onClick={() => handleApprove(selected.id)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-90" style={{ background: '#0F9D58' }}>✓ Approve</button>
-                <button onClick={() => handleReject(selected.id)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all hover:bg-red-50" style={{ color: '#C0392B', borderColor: '#F0B8B3', background: '#FBEAE8' }}>✗ Reject</button>
+                <button onClick={() => approveMutation.mutate({ id: selected.id, action: 'approved' })} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-90 cursor-pointer" style={{ background: '#0F9D58' }}>✓ Approve</button>
+                <button onClick={() => approveMutation.mutate({ id: selected.id, action: 'rejected' })} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all hover:bg-red-50 cursor-pointer" style={{ color: '#C0392B', borderColor: '#F0B8B3', background: '#FBEAE8' }}>✗ Reject</button>
               </div>
             )}
+            
             {selected.status === 'Approved' && (
-              <div><p className="text-xs font-semibold mb-2" style={{ color: '#1A1621' }}>Assign Technician</p>
-                <select className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none bg-white mb-2" style={{ borderColor: '#E7E5EA' }}>
-                  {mockUsers.map(u => <option key={u.id}>{u.name}</option>)}</select>
-                <button onClick={() => toast.success('Technician assigned!')} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white hover:brightness-90" style={{ background: '#7A3B5E' }}>Assign</button></div>
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: '#1A1621' }}>Assign Technician</p>
+                <select value={selectedTechId} onChange={e => setSelectedTechId(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none bg-white mb-2" style={{ borderColor: '#E7E5EA' }}>
+                  {rawEmployees.map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                  ))}
+                </select>
+                <button onClick={() => assignMutation.mutate({ id: selected.id, technicianId: selectedTechId })} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white hover:brightness-90 cursor-pointer" style={{ background: '#7A3B5E' }}>Assign</button>
+              </div>
+            )}
+
+            {selected.status === 'Assigned' && (
+              <button onClick={() => startMutation.mutate(selected.id)} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white hover:brightness-90 cursor-pointer" style={{ background: '#0F8B7F' }}>
+                Start Repair Work →
+              </button>
+            )}
+
+            {selected.status === 'InProgress' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: '#1A1621' }}>Resolution Notes</label>
+                  <textarea value={resolutionNotes} onChange={e => setResolutionNotes(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: '#E7E5EA' }} rows={3} placeholder="Describe the resolution steps…" />
+                </div>
+                <button onClick={() => {
+                  if (!resolutionNotes) return toast.error('Please input resolution notes')
+                  resolveMutation.mutate({ id: selected.id, notes: resolutionNotes })
+                }} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white hover:brightness-90 cursor-pointer" style={{ background: '#0F9D58' }}>
+                  Mark as Resolved ✓
+                </button>
+              </div>
+            )}
+
+            {selected.status === 'Resolved' && (
+              <button onClick={() => closeMutation.mutate(selected.id)} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white hover:brightness-90 cursor-pointer" style={{ background: '#7A3B5E' }}>
+                Close Ticket & Archive
+              </button>
             )}
           </div>
         )}
@@ -158,30 +301,40 @@ export function MaintenancePage() {
 
       {/* Raise Request Modal */}
       <Modal open={showRaise} onClose={() => setShowRaise(false)} title="Raise Maintenance Request" size="lg"
-        footer={<><button onClick={() => setShowRaise(false)} className="px-4 py-2 text-sm font-medium rounded-xl border hover:bg-slate-50" style={{ borderColor: '#E7E5EA', color: '#6B6470' }}>Cancel</button>
-        <button onClick={() => { toast.success('Request submitted!'); setShowRaise(false) }} className="px-4 py-2 text-sm font-semibold text-white rounded-xl hover:brightness-90" style={{ background: '#7A3B5E' }}>Submit →</button></>}
+        footer={
+          <>
+            <button onClick={() => setShowRaise(false)} className="px-4 py-2 text-sm font-medium rounded-xl border hover:bg-slate-50 cursor-pointer" style={{ borderColor: '#E7E5EA', color: '#6B6470' }}>Cancel</button>
+            <button onClick={handleRaiseSubmit} className="px-4 py-2 text-sm font-semibold text-white rounded-xl hover:brightness-90 cursor-pointer" style={{ background: '#7A3B5E' }}>
+              {raiseMutation.isPending ? 'Submitting…' : 'Submit →'}
+            </button>
+          </>
+        }
       >
         <div className="space-y-4">
-          <div><label className="block text-sm font-medium mb-1.5" style={{ color: '#1A1621' }}>Asset</label>
-            <select className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: '#E7E5EA' }}>
-              {mockAssets.map(a => <option key={a.id}>{a.tag} — {a.name}</option>)}</select></div>
-          <div><label className="block text-sm font-medium mb-2" style={{ color: '#1A1621' }}>Priority</label>
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: '#1A1621' }}>Asset</label>
+            <select value={selectedAssetId} onChange={e => setSelectedAssetId(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: '#E7E5EA' }}>
+              {assets.map(a => <option key={a.id} value={a.id}>{a.tag} — {a.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2" style={{ color: '#1A1621' }}>Priority</label>
             <div className="grid grid-cols-4 gap-2">
               {['Critical', 'High', 'Medium', 'Low'].map(p => (
-                <label key={p} className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-xs transition-all" style={{ borderColor: '#E7E5EA' }}>
-                  <input type="radio" name="priority" value={p} className="accent-[#7A3B5E]" />
+                <label key={p} className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-xs transition-all" style={{ borderColor: priority === p ? '#7A3B5E' : '#E7E5EA', background: priority === p ? '#F0E8ED' : 'white' }}>
+                  <input type="radio" name="priority" value={p} checked={priority === p} onChange={() => setPriority(p)} className="accent-[#7A3B5E]" />
                   <span className="font-semibold" style={{ color: '#1A1621' }}>{p}</span>
                 </label>
-              ))}</div></div>
-          <div><label className="block text-sm font-medium mb-1.5" style={{ color: '#1A1621' }}>Description</label>
-            <textarea className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: '#E7E5EA' }} rows={4} /></div>
-          <div><label className="block text-sm font-medium mb-1.5" style={{ color: '#1A1621' }}>Photo (optional)</label>
-            <div className="border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-colors" style={{ borderColor: '#D8B8CA' }}>
-              <Upload className="w-5 h-5 mx-auto mb-2" style={{ color: '#9C97A3' }} />
-              <p className="text-xs" style={{ color: '#9C97A3' }}>Upload a photo of the issue</p>
-            </div></div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: '#1A1621' }}>Description</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: '#E7E5EA' }} rows={4} placeholder="Provide failure / repair work description details…" />
+          </div>
         </div>
       </Modal>
     </>
   )
 }
+export default MaintenancePage;

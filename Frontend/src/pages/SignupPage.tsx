@@ -78,13 +78,12 @@ export function SignupPage() {
 
             <div className="mt-10 space-y-3">
               {[
-                { icon: '📦', title: 'Asset Lifecycle Tracking', desc: 'From procurement to disposal' },
-                { icon: '🔄', title: 'Smart Allocations', desc: 'Conflict-free with transfer flows' },
-                { icon: '📅', title: 'Resource Booking', desc: 'Calendar with overlap protection' },
-                { icon: '📋', title: 'Audit Cycles', desc: 'Discrepancy reports, one click' },
+                { title: 'Asset Lifecycle Tracking', desc: 'From procurement to disposal' },
+                { title: 'Smart Allocations', desc: 'Conflict-free with transfer flows' },
+                { title: 'Resource Booking', desc: 'Calendar with overlap protection' },
+                { title: 'Audit Cycles', desc: 'Discrepancy reports, one click' },
               ].map(f => (
                 <div key={f.title} className="flex items-start gap-3">
-                  <span className="text-xl flex-shrink-0 mt-0.5">{f.icon}</span>
                   <div>
                     <p className="text-sm font-semibold text-white">{f.title}</p>
                     <p className="text-xs" style={{ color: '#9C7A8A' }}>{f.desc}</p>
